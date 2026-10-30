@@ -35,14 +35,31 @@ for d in "${DRIVES[@]}"; do
     mount_point="${MOUNT_ROOT}/nfs_${d}"
     export_path=":/${d}"
 
+    mount_line="$(mount | grep -F " on ${mount_point} " || true)"
+    if [ -n "${mount_line}" ]; then
+        if [[ "${mount_line}" == "${SERVER}:"* ]]; then
+            probe_error="$(ls -A "${mount_point}" 2>&1 >/dev/null)" && probe_status=0 || probe_status=$?
+            if [ "${probe_status}" -eq 0 ]; then
+                echo "跳过 ${mount_point}（已挂载）"
+                continue
+            elif [[ "${probe_error}" == *"Stale NFS file handle"* ]]; then
+                echo "${mount_point} 存在失效的 NFS 挂载，正在强制卸载..."
+                if ! sudo umount -f "${mount_point}"; then
+                    echo "无法清理失效挂载：${mount_point}" >&2
+                    exit 1
+                fi
+            else
+                echo "无法检查现有挂载 ${mount_point}：${probe_error}" >&2
+                exit 1
+            fi
+        else
+            echo "跳过 ${mount_point}（已由其他来源挂载）"
+            continue
+        fi
+    fi
+
     # 创建挂载点目录
     sudo mkdir -p "${mount_point}"
-
-    # 已挂载则跳过
-    if mount | grep -q " on ${mount_point} "; then
-        echo "跳过 ${mount_point}（已挂载）"
-        continue
-    fi
 
     # 挂载（nolock 必须，因为 WinNFSd 不实现 NLM 文件锁）
     sudo mount -t nfs -o nolock,vers=3 "${SERVER}${export_path}" "${mount_point}"

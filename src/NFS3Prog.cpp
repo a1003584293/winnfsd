@@ -10,7 +10,9 @@
 #include <windows.h>
 #include <time.h>
 #include <share.h>
+#include <stdint.h>
 #include "shlwapi.h"
+#include "conv.h"
 #define BUFFER_SIZE 1000
 
 enum
@@ -171,7 +173,7 @@ void filename3::SetSize(uint32 len)
     name = (char *)contents;
 }
 
-void filename3::Set(char *str)
+void filename3::Set(const char *str)
 {
     SetSize(strlen(str));
     strcpy_s(name, (strlen(str) + 1), str);
@@ -193,7 +195,7 @@ void nfspath3::SetSize(uint32 len)
     path = (char *)contents;
 }
 
-void nfspath3::Set(char *str)
+void nfspath3::Set(const char *str)
 {
     SetSize(strlen(str));
     strcpy_s(path, (strlen(str) + 1), str);
@@ -441,7 +443,7 @@ nfsstat3 CNFS3Prog::ProcedureSETATTR(void)
             //     nMode |= S_IEXEC;
             // }
 
-            if (_chmod(cStr, nMode) != 0) {
+            if (_chmod_utf8(cStr, nMode) != 0) {
                 stat = NFS3ERR_INVAL;
             } else {
 
@@ -457,7 +459,7 @@ nfsstat3 CNFS3Prog::ProcedureSETATTR(void)
         if (new_attributes.atime.set_it == SET_TO_CLIENT_TIME){}
 
         if (new_attributes.mtime.set_it == SET_TO_SERVER_TIME || new_attributes.atime.set_it == SET_TO_SERVER_TIME){
-            hFile = CreateFile(cStr, FILE_WRITE_ATTRIBUTES, FILE_SHARE_WRITE, 0, OPEN_EXISTING, 0, 0);
+            hFile = _create_file_utf8(cStr, FILE_WRITE_ATTRIBUTES, FILE_SHARE_WRITE, 0, OPEN_EXISTING, 0, 0);
             if (hFile != INVALID_HANDLE_VALUE) {
                 GetSystemTime(&systemTime);
                 SystemTimeToFileTime(&systemTime, &fileTime);
@@ -472,7 +474,7 @@ nfsstat3 CNFS3Prog::ProcedureSETATTR(void)
         }
 
         if (new_attributes.size.set_it){
-            pFile = _fsopen(cStr, "r+b", _SH_DENYWR);
+            pFile = _fsopen_utf8(cStr, "r+b", _SH_DENYWR);
             if (pFile != NULL) {
                 int filedes = _fileno(pFile);
                 _chsize_s(filedes, new_attributes.size.size);
@@ -576,7 +578,7 @@ nfsstat3 CNFS3Prog::ProcedureREADLINK(void)
     stat = CheckFile(cStr);
     if (stat == NFS3_OK) {
 
-        hFile = CreateFile(cStr, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_REPARSE_POINT | FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, NULL);
+        hFile = _create_file_utf8(cStr, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_REPARSE_POINT | FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, NULL);
 
         if (hFile == INVALID_HANDLE_VALUE) {
             stat = NFS3ERR_IO;
@@ -686,7 +688,7 @@ nfsstat3 CNFS3Prog::ProcedureREAD(void)
 
     if (stat == NFS3_OK) {
         data.SetSize(count);
-        pFile = _fsopen(cStr, "rb", _SH_DENYWR);
+        pFile = _fsopen_utf8(cStr, "rb", _SH_DENYWR);
 
         if (pFile != NULL) {
             _fseeki64(pFile, offset, SEEK_SET) ;
@@ -752,7 +754,7 @@ nfsstat3 CNFS3Prog::ProcedureWRITE(void)
             int handleId = *(unsigned int *)handle.contents;
 
             if (unstableStorageFile.count(handleId) == 0){
-                pFile = _fsopen(cStr, "r+b", _SH_DENYWR);
+                pFile = _fsopen_utf8(cStr, "r+b", _SH_DENYWR);
                 if (pFile != NULL) {
                     unstableStorageFile.insert(std::make_pair(handleId, pFile));
                 }
@@ -782,7 +784,7 @@ nfsstat3 CNFS3Prog::ProcedureWRITE(void)
             file_wcc.after.attributes_follow = file_wcc.before.attributes_follow;
         } else {
 
-            pFile = _fsopen(cStr, "r+b", _SH_DENYWR);
+            pFile = _fsopen_utf8(cStr, "r+b", _SH_DENYWR);
 
             if (pFile != NULL) {
                 _fseeki64(pFile, offset, SEEK_SET) ;
@@ -839,7 +841,7 @@ nfsstat3 CNFS3Prog::ProcedureCREATE(void)
 
     dir_wcc.before.attributes_follow = GetFileAttributesForNFS((char*)dirName.c_str(), &dir_wcc.before.attributes);
 
-    pFile = _fsopen(path, "wb", _SH_DENYWR);
+    pFile = _fsopen_utf8(path, "wb", _SH_DENYWR);
        
     if (pFile != NULL) {
         fclose(pFile);
@@ -897,7 +899,7 @@ nfsstat3 CNFS3Prog::ProcedureMKDIR(void)
 
     dir_wcc.before.attributes_follow = GetFileAttributesForNFS((char*)dirName.c_str(), &dir_wcc.before.attributes);
 
-    int result = _mkdir(path);
+    int result = _mkdir_utf8(path);
 
     if (result == 0) {
         stat = NFS3_OK;
@@ -971,7 +973,7 @@ nfsstat3 CNFS3Prog::ProcedureSYMLINK(void)
     TCHAR fullTargetPathNormalized[MAX_PATH];
     _In_ LPTSTR fullTargetPathString = const_cast<LPSTR>(fullTargetPath.c_str());
     GetFullPathName(fullTargetPathString, MAX_PATH, fullTargetPathNormalized, NULL);
-    targetFileAttr = GetFileAttributes(fullTargetPathNormalized);
+    targetFileAttr = _get_file_attributes_utf8(fullTargetPathNormalized);
 
     dwFlags = 0x0;
 	if (targetFileAttr & FILE_ATTRIBUTE_DIRECTORY) {
@@ -1034,7 +1036,7 @@ nfsstat3 CNFS3Prog::ProcedureREMOVE(void)
     dir_wcc.before.attributes_follow = GetFileAttributesForNFS((char*)dirName.c_str(), &dir_wcc.before.attributes);
 
     if (stat == NFS3_OK) {
-        DWORD fileAttr = GetFileAttributes(path);
+        DWORD fileAttr = _get_file_attributes_utf8(path);
         if ((fileAttr & FILE_ATTRIBUTE_DIRECTORY) && (fileAttr & FILE_ATTRIBUTE_REPARSE_POINT)) {
             returnCode = RemoveFolder(path);
             if (returnCode != 0) {
@@ -1120,7 +1122,7 @@ nfsstat3 CNFS3Prog::ProcedureRENAME(void)
     todir_wcc.before.attributes_follow = GetFileAttributesForNFS((char*)dirToName.c_str(), &todir_wcc.before.attributes);
     
     if (FileExists(pathTo)) {
-		DWORD fileAttr = GetFileAttributes(pathTo);
+		DWORD fileAttr = _get_file_attributes_utf8(pathTo);
 		if ((fileAttr & FILE_ATTRIBUTE_DIRECTORY) && (fileAttr & FILE_ATTRIBUTE_REPARSE_POINT)) {
 			returnCode = RemoveFolder(pathTo);
 			if (returnCode != 0) {
@@ -1215,9 +1217,11 @@ nfsstat3 CNFS3Prog::ProcedureREADDIR(void)
     bool eof;
     bool bFollows;
     nfsstat3 stat;
-    char filePath[MAXPATHLEN];
-    int handle, nFound;
-    struct _finddata_t fileinfo;
+    std::wstring searchPath;
+    std::wstring wideDirectory;
+    intptr_t handle;
+    int nFound;
+    struct _wfinddata_t fileinfo;
     unsigned int i, j;
 
     PrintLog("READDIR");
@@ -1235,22 +1239,25 @@ nfsstat3 CNFS3Prog::ProcedureREADDIR(void)
             stat = NFS3ERR_IO;
         }    
     }
+    if (stat == NFS3_OK && !_utf8_to_wide(cStr, wideDirectory)) {
+        stat = NFS3ERR_INVAL;
+    }
 
     Write(&stat);
     Write(&dir_attributes);
 
     if (stat == NFS3_OK) {
         Write(&cookieverf);
-        sprintf_s(filePath, "%s\\*", cStr);
+        searchPath = wideDirectory + L"\\*";
         eof = true;
-        handle = _findfirst(filePath, &fileinfo);
+        handle = _wfindfirst(searchPath.c_str(), &fileinfo);
         bFollows = true;
 
-        if (handle) {
+        if (handle != -1) {
             nFound = 0;
 
             for (i = (unsigned int)cookie; i > 0; i--) {
-                nFound = _findnext(handle, &fileinfo);
+                nFound = _wfindnext(handle, &fileinfo);
             }
 
             // TODO: Implement this workaround correctly with the
@@ -1260,10 +1267,15 @@ nfsstat3 CNFS3Prog::ProcedureREADDIR(void)
 
                 do {
                     Write(&bFollows); //value follows
-                    sprintf_s(filePath, "%s\\%s", cStr, fileinfo.name);
-                    fileid = GetFileID(filePath);
+                    std::string utf8Name;
+                    if (!_wide_to_utf8(fileinfo.name, utf8Name)) {
+                        _findclose(handle);
+                        return NFS3ERR_IO;
+                    }
+                    std::string filePath = path + "\\" + utf8Name;
+                    fileid = GetFileID(filePath.c_str());
                     Write(&fileid); //file id
-                    name.Set(fileinfo.name);
+                    name.Set(utf8Name.c_str());
                     Write(&name); //name
                     ++cookie;
                     Write(&cookie); //cookie
@@ -1271,7 +1283,7 @@ nfsstat3 CNFS3Prog::ProcedureREADDIR(void)
                         eof = false;
                         break;
                     }
-                } while (_findnext(handle, &fileinfo) == 0);
+                } while (_wfindnext(handle, &fileinfo) == 0);
             }
 
             _findclose(handle);
@@ -1298,9 +1310,11 @@ nfsstat3 CNFS3Prog::ProcedureREADDIRPLUS(void)
     post_op_fh3 name_handle;
     bool eof;
     nfsstat3 stat;
-    char filePath[MAXPATHLEN];
-    int handle, nFound;
-    struct _finddata_t fileinfo;
+    std::wstring searchPath;
+    std::wstring wideDirectory;
+    intptr_t handle;
+    int nFound;
+    struct _wfinddata_t fileinfo;
     unsigned int i, j;
     bool bFollows;
 
@@ -1320,21 +1334,24 @@ nfsstat3 CNFS3Prog::ProcedureREADDIRPLUS(void)
             stat = NFS3ERR_IO;
         }
     }
+    if (stat == NFS3_OK && !_utf8_to_wide(cStr, wideDirectory)) {
+        stat = NFS3ERR_INVAL;
+    }
 
     Write(&stat);
     Write(&dir_attributes);
 
     if (stat == NFS3_OK) {
         Write(&cookieverf);
-        sprintf_s(filePath, "%s\\*", cStr);
-        handle = _findfirst(filePath, &fileinfo);
+        searchPath = wideDirectory + L"\\*";
+        handle = _wfindfirst(searchPath.c_str(), &fileinfo);
         eof = true;
 
-        if (handle) {
+        if (handle != -1) {
             nFound = 0;
 
             for (i = (unsigned int)cookie; i > 0; i--) {
-                nFound = _findnext(handle, &fileinfo);
+                nFound = _wfindnext(handle, &fileinfo);
             }              
 
             if (nFound == 0) {
@@ -1343,23 +1360,28 @@ nfsstat3 CNFS3Prog::ProcedureREADDIRPLUS(void)
 
                 do {
                     Write(&bFollows); //value follows
-                    sprintf_s(filePath, "%s\\%s", cStr, fileinfo.name);
-                    fileid = GetFileID(filePath);
+                    std::string utf8Name;
+                    if (!_wide_to_utf8(fileinfo.name, utf8Name)) {
+                        _findclose(handle);
+                        return NFS3ERR_IO;
+                    }
+                    std::string filePath = path + "\\" + utf8Name;
+                    fileid = GetFileID(filePath.c_str());
                     Write(&fileid); //file id
-                    name.Set(fileinfo.name);
+                    name.Set(utf8Name.c_str());
                     Write(&name); //name
                     ++cookie;
                     Write(&cookie); //cookie
-                    name_attributes.attributes_follow = GetFileAttributesForNFS(filePath, &name_attributes.attributes);
+                    name_attributes.attributes_follow = GetFileAttributesForNFS(filePath.c_str(), &name_attributes.attributes);
                     Write(&name_attributes);
-                    name_handle.handle_follows = GetFileHandle(filePath, &name_handle.handle);
+                    name_handle.handle_follows = GetFileHandle(filePath.c_str(), &name_handle.handle);
                     Write(&name_handle);
 
                     if (--j == 0) {
                         eof = false;
                         break;
                     }
-                } while (_findnext(handle, &fileinfo) == 0);
+                } while (_wfindnext(handle, &fileinfo) == 0);
             }
 
             _findclose(handle);
@@ -1849,7 +1871,7 @@ nfsstat3 CNFS3Prog::CheckFile(const char *fullPath)
     }
 
 	//if (!FileExists(fullPath)) {
-	if (_access(fullPath, 0) != 0) {
+	if (_access_utf8(fullPath, 0) != 0) {
         return NFS3ERR_NOENT;
     }
 
@@ -1859,7 +1881,9 @@ nfsstat3 CNFS3Prog::CheckFile(const char *fullPath)
 nfsstat3 CNFS3Prog::CheckFile(const char *directory, const char *fullPath)
 {
     // FileExists will not work for the root of a drive, e.g. \\?\D:\, therefore check if it is a drive root with GetDriveType
-    if (directory == NULL || (!FileExists(directory) && GetDriveType(directory) < 2) || fullPath == NULL) {
+    std::wstring wideDirectory;
+    if (directory == NULL || fullPath == NULL || !_utf8_to_wide(directory, wideDirectory) ||
+        (!FileExists(directory) && GetDriveTypeW(wideDirectory.c_str()) < 2)) {
         return NFS3ERR_STALE;
     }
         
@@ -1887,13 +1911,13 @@ bool CNFS3Prog::GetFileHandle(const char *path, nfs_fh3 *pObject)
 
 bool CNFS3Prog::GetFileAttributesForNFS(const char *path, wcc_attr *pAttr)
 {
-    struct stat data;
+    struct _stat data;
 
     if (path == NULL) {
         return false;
     }
 
-    if (stat(path, &data) != 0) {
+    if (_stat_utf8(path, &data) != 0) {
         return false;
     }
 
@@ -1916,7 +1940,7 @@ bool CNFS3Prog::GetFileAttributesForNFS(const char *path, fattr3 *pAttr)
     HANDLE hFile;
     DWORD dwFlagsAndAttributes;
 
-    fileAttr = GetFileAttributes(path);
+    fileAttr = _get_file_attributes_utf8(path);
 
     if (path == NULL || fileAttr == INVALID_FILE_ATTRIBUTES)
     {
@@ -1945,7 +1969,7 @@ bool CNFS3Prog::GetFileAttributesForNFS(const char *path, fattr3 *pAttr)
 		dwFlagsAndAttributes = FILE_ATTRIBUTE_REPARSE_POINT | FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS;
     }
 
-	hFile = CreateFile(path, FILE_READ_EA, FILE_SHARE_READ, NULL, OPEN_EXISTING, dwFlagsAndAttributes, NULL);
+	hFile = _create_file_utf8(path, FILE_READ_EA, FILE_SHARE_READ, NULL, OPEN_EXISTING, dwFlagsAndAttributes, NULL);
 
     if (hFile == INVALID_HANDLE_VALUE) {
         return false;

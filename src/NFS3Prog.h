@@ -53,7 +53,7 @@ class filename3 : public opaque
     filename3();
     ~filename3();
     void SetSize(uint32 len);
-    void Set(char *str);
+    void Set(const char *str);
 };
 
 class nfspath3 : public opaque
@@ -64,7 +64,7 @@ class nfspath3 : public opaque
 	nfspath3();
 	~nfspath3();
 	void SetSize(uint32 len);
-    void Set(char *str);
+    void Set(const char *str);
 };
 
 typedef struct

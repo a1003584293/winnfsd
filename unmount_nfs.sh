@@ -15,11 +15,17 @@ sudo -v
 
 echo "开始卸载 NFS 挂载..."
 for mp in "${MOUNT_ROOT}"/nfs_*; do
-    [ -e "${mp}" ] || continue
+    if [ "${mp}" = "${MOUNT_ROOT}/nfs_*" ]; then
+        continue
+    fi
 
-    if mount | grep -q " on ${mp} "; then
-        if [ -z "${SERVER}" ] || mount | grep -q "^${SERVER}:" ; then
-            sudo umount "${mp}" && echo "已卸载 ${mp}"
+    echo "正在检查 ${mp}..."
+    mount_line="$(mount | grep -F " on ${mp} " || true)"
+    if [ -n "${mount_line}" ]; then
+        if [ -z "${SERVER}" ] || [[ "${mount_line}" == "${SERVER}:"* ]]; then
+            echo "正在卸载 ${mp}...（NFS 响应较慢时可能需要等待）"
+            sudo umount "${mp}"
+            echo "已卸载 ${mp}"
             rmdir "${mp}" 2>/dev/null || true
         else
             echo "跳过 ${mp}（不属于 ${SERVER}）"

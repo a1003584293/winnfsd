@@ -3,9 +3,12 @@
 #include <string.h>
 #include <io.h>
 #include <stdio.h>
+#include <wchar.h>
+#include <errno.h>
 #include <windows.h>
 #include <sys/stat.h>
 #include "tree.hh"
+#include "conv.h"
 
 #define FHSIZE 32
 #define NFS3_FHSIZE 64
@@ -347,13 +350,22 @@ void CFileTable::RenameFile(const char *pathFrom, const char* pathTo)
 
 bool FileExists(const char *path)
 {
-    int handle;
-    struct _finddata_t fileinfo;
+    std::wstring widePath;
+    struct _wfinddata_t fileinfo;
+    if (!_utf8_to_wide(path, widePath)) {
+        return false;
+    }
 
-    handle = _findfirst(path, &fileinfo);
+    intptr_t handle = _wfindfirst(widePath.c_str(), &fileinfo);
+    if (handle == -1) {
+        return false;
+    }
+
+    size_t separator = widePath.find_last_of(L'\\');
+    std::wstring fileName = widePath.substr(separator == std::wstring::npos ? 0 : separator + 1);
+    bool matches = wcscmp(fileinfo.name, fileName.c_str()) == 0;
     _findclose(handle);
-
-    return handle == -1 ? false : strcmp(fileinfo.name, strrchr(path, '\\') + 1) == 0;  //filename must match case
+    return matches;
 }
 
 unsigned long GetFileID(const char *path)
@@ -383,7 +395,12 @@ int RenameFile(const char *pathFrom, const char *pathTo)
         return false;
     }
 
-    errno_t errorNumber = rename(pathFrom, pathTo);
+    std::wstring widePathFrom;
+    std::wstring widePathTo;
+    if (!_utf8_to_wide(pathFrom, widePathFrom) || !_utf8_to_wide(pathTo, widePathTo)) {
+        return EINVAL;
+    }
+    errno_t errorNumber = _wrename(widePathFrom.c_str(), widePathTo.c_str());
 
     if (errorNumber == 0) { //success
 		g_FileTable.RenameFile(pathFrom, pathTo);
@@ -433,9 +450,13 @@ bool RemoveFile(const char *path)
 	int nMode = 0;
 	nMode |= S_IREAD;
 	nMode |= S_IWRITE;
-	_chmod(path, nMode);
+	std::wstring widePath;
+	if (!_utf8_to_wide(path, widePath)) {
+		return false;
+	}
+	_wchmod(widePath.c_str(), nMode);
 
-    if (remove(path) == 0){
+    if (_wremove(widePath.c_str()) == 0){
         g_FileTable.RemoveItem(path);
         return true;
     }
@@ -448,9 +469,13 @@ int RemoveFolder(const char *path)
 	unsigned long errorCode = 0;
 	nMode |= S_IREAD;
 	nMode |= S_IWRITE;
-	_chmod(path, nMode);
+	std::wstring widePath;
+	if (!_utf8_to_wide(path, widePath)) {
+		return ERROR_NO_UNICODE_TRANSLATION;
+	}
+	_wchmod(widePath.c_str(), nMode);
 
-    if (RemoveDirectory(path) != 0) {
+    if (RemoveDirectoryW(widePath.c_str()) != 0) {
         const char* dotFile = "\\.";
         const char* backFile = "\\..";
 

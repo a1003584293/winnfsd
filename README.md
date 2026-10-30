@@ -14,6 +14,8 @@ WinNFSd is a Network File System V3 (NFS) server for Windows.
 
 You can use any NFS client to mount a directory of Windows and read/write files via NFS v3 protocol. It is useful when you usually access files of Windows on Linux and for especially for virtual machines, since it is much faster than shared folders.
 
+File names are exchanged with NFS clients as UTF-8 and accessed through the Windows Unicode APIs.
+
 You can also export any folder with an additional alias.
 
 The export of multiple folders is also possible. Just put the shared foldes and an optional alias into a simple text file:
