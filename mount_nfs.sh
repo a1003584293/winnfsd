@@ -9,7 +9,25 @@
 # 可先改下面两个变量（一般不用改，脚本会自动探测）
 
 # NFS 服务器地址（Windows 机器的 IP）
+#
+# 用网线直连时改成有线网卡的地址（169.254.x.x 或手工设置的静态地址）：
+#   192.168.0.112 → 走 Wi-Fi
+#   169.254.x.x   → 走网线（Mac 的路由表会把 link-local 段指向 en0）
+# WinNFSd 用 `-addr 0.0.0.0` 启动时会监听所有网卡，所以两种地址都能挂载，
+# 具体走哪条链路由这里填的地址决定。
 SERVER="192.168.0.112"
+
+# NFS 客户端参数。
+#
+# `nolock` 是必须的：WinNFSd 不实现 NLM 文件锁。
+#
+# `rsize`/`wsize`/`readahead` 决定单条读请求的吞吐上限：
+#   在途窗口 = rsize × readahead
+#   实测值：默认 rsize=32768 + readahead=16 → 窗口 512KB，
+#   在 Wi-Fi 抖动（RTT 3~250ms）下只有 14~24 MB/s；
+#   改为 rsize=1MB + readahead=8 → 窗口 8MB，足以跑满千兆有线（约 110 MB/s）。
+# 取值约束见 `man 8 mount_nfs`：rsize 需为 4096 的倍数，readahead 范围 0~128。
+NFS_OPTS="nolock,vers=3,rsize=1048576,wsize=1048576,readahead=8"
 
 # 要挂载的盘符列表（对应 exports.txt 里的别名 /D /E ...）
 DRIVES=(D E F G H I K L N)
@@ -62,7 +80,7 @@ for d in "${DRIVES[@]}"; do
     sudo mkdir -p "${mount_point}"
 
     # 挂载（nolock 必须，因为 WinNFSd 不实现 NLM 文件锁）
-    sudo mount -t nfs -o nolock,vers=3 "${SERVER}${export_path}" "${mount_point}"
+    sudo mount -t nfs -o "${NFS_OPTS}" "${SERVER}${export_path}" "${mount_point}"
 
     echo "已挂载 ${SERVER}${export_path} -> ${mount_point}"
 done
