@@ -3,13 +3,13 @@ SRCS := conv.cpp DatagramSocket.cpp FileTable.cpp FileTree.cpp MountProg.cpp NFS
 OBJS = $(subst .cpp,.o,$(SRCS))
 
 ARCH ?= x86_64
-RM  := rm
+RM  := rm -f
 CC=$(ARCH)-w64-mingw32-g++
 CXX=$(ARCH)-w64-mingw32-g++
 
 CPPFLAGS:=-g -O2 -std=c++11 -D_WIN32_WINNT=0x600
-LDFLAGS:=-g -static-libgcc -static-libstdc++ -mconsole
-LIBS:=-lws2_32
+LDFLAGS:=-g -static -mconsole
+LIBS:=-lws2_32 -lshlwapi
 
 $(PROGRAM): $(OBJS)
 	$(LINK.o) $^ $(LIBS) -o $@

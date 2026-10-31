@@ -206,7 +206,7 @@ static void start(std::vector<std::vector<std::string>> paths)
 	if (ServerSockets[0].Open(PORTMAP_PORT, 3) && DatagramSockets[0].Open(PORTMAP_PORT)) { //start portmap daemon
 		printf("Portmap daemon started\n");
 
-		if (ServerSockets[1].Open(NFS_PORT, 10) && DatagramSockets[1].Open(NFS_PORT)) { //start nfs daemon
+		if (ServerSockets[1].Open(NFS_PORT, 20) && DatagramSockets[1].Open(NFS_PORT)) { //start nfs daemon
 			printf("NFS daemon started\n");
 
 			if (ServerSockets[2].Open(MOUNT_PORT, 3) && DatagramSockets[2].Open(MOUNT_PORT)) { //start mount daemon

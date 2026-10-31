@@ -9,21 +9,21 @@
 #
 # 为什么不两条一起挂：WinNFSd 在 `winnfsd.cpp` 里把并发连接数写死了
 #
-#     ServerSockets[1].Open(NFS_PORT,   10);   // 2049 最多 10 条连接
+#     ServerSockets[1].Open(NFS_PORT,   20);   // 2049 最多 20 条连接
 #     ServerSockets[2].Open(MOUNT_PORT,  3);   // 1058 最多 3 条
 #
 # 而 `CServerSocket::Run()` 在槽位占满时会把 accept 到的 socket **直接丢掉**
 # （既不处理也不关闭），客户端就只能干等到超时，报
 # `can't mount ... Operation timed out`。macOS 每个挂载点固定占 1 条 2049 连接，
-# 9 个盘就是 9 条，再叠一条链路立刻撞上限——表现就是"只有第一个盘挂上，
-# 后面的全超时"。网线 0.4 ms、Wi-Fi 4.4 ms 的延迟差距也说明没必要同时挂。
+# 9 个盘 × 2 条链路 = 18 条，还在 20 以内；默认仍只挂一条，是因为两条一起挂
+# 只会互相抢带宽。
 #
 # 用法:
 #   chmod +x mount_nfs.sh
 #   ./mount_nfs.sh              # 自动：网线优先，不可用则 Wi-Fi
 #   ./mount_nfs.sh line         # 只挂网线
 #   ./mount_nfs.sh wireless     # 只挂 Wi-Fi
-#   ./mount_nfs.sh both         # 两条都挂（仅用于对比速度，受上面 10 条连接限制）
+#   ./mount_nfs.sh both         # 两条都挂（18 条连接，仍在 20 条上限内）
 
 # ===== 配置 =====
 
@@ -68,9 +68,9 @@ NFS_OPTS="nolock,vers=3,rsize=1048576,wsize=1048576,readahead=8"
 PROBE_TIMEOUT=2
 
 # WinNFSd 写死的 2049 并发连接上限，见 `winnfsd/src/winnfsd.cpp` 的
-# `ServerSockets[1].Open(NFS_PORT, 10)`。macOS 每个挂载点占 1 条，所以这个数字
+# `ServerSockets[1].Open(NFS_PORT, 20)`。macOS 每个挂载点占 1 条，所以这个数字
 # 就是"这台服务器最多能被挂几个盘"。
-WINNFSD_MAX_CLIENTS=10
+WINNFSD_MAX_CLIENTS=20
 
 # ===== 辅助函数 =====
 
@@ -372,8 +372,8 @@ wireless)
 both)
     use_wireless=${wireless_ok}
     use_wired=${wired_ok}
-    echo "同时挂两条链路：注意 WinNFSd 的 2049 只有 ${WINNFSD_MAX_CLIENTS} 条连接上限，" >&2
-    echo "每条链路占满 ${#DRIVES[@]} 个盘就会撞上限，后面的盘会 Operation timed out。" >&2
+    echo "同时挂两条链路：9 × 2 = 18 条 2049 连接，未超过 WinNFSd 的 ${WINNFSD_MAX_CLIENTS} 条上限。" >&2
+    echo "两条链路读写的是同一个 WinNFSd 进程和同一批磁盘，只建议用来对比速度。" >&2
     echo
     ;;
 auto)
@@ -394,20 +394,20 @@ if ${use_wireless} && ${use_wired}; then
 else
     # 单链路模式：另一条链路上残留的挂载会白占 WinNFSd 的连接槽，必须先清掉。
     if ${use_wired} && [ "$(link_mount_count "${WIRELESS_DIR}")" -gt 0 ]; then
-        echo "Wi-Fi 上还有 $(link_mount_count "${WIRELESS_DIR}") 个挂载，会占满 WinNFSd 的连接槽。"
+        echo "Wi-Fi 上还有 $(link_mount_count "${WIRELESS_DIR}") 个挂载，会继续占着 WinNFSd 的连接槽。"
         if ask_yes_no "先卸载 Wi-Fi 上的挂载？[Y/n] " y; then
             drop_link_mounts "Wi-Fi" "${WIRELESS_DIR}" || exit 1
         else
-            echo "保留 Wi-Fi 挂载，本次网线挂载很可能因为连接数上限而超时。" >&2
+            echo "保留 Wi-Fi 挂载，本次网线挂载会再多占 ${#DRIVES[@]} 条槽位。" >&2
         fi
         echo
     fi
     if ${use_wireless} && [ "$(link_mount_count "${WIRED_DIR}")" -gt 0 ]; then
-        echo "网线上还有 $(link_mount_count "${WIRED_DIR}") 个挂载，会占满 WinNFSd 的连接槽。"
+        echo "网线上还有 $(link_mount_count "${WIRED_DIR}") 个挂载，会继续占着 WinNFSd 的连接槽。"
         if ask_yes_no "先卸载网线上的挂载？[Y/n] " y; then
             drop_link_mounts "网线" "${WIRED_DIR}" || exit 1
         else
-            echo "保留网线挂载，本次 Wi-Fi 挂载很可能因为连接数上限而超时。" >&2
+            echo "保留网线挂载，本次 Wi-Fi 挂载会再多占 ${#DRIVES[@]} 条槽位。" >&2
         fi
         echo
     fi
