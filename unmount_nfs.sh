@@ -16,6 +16,11 @@
 
 MOUNT_ROOT="/Volumes"
 
+# mount_nfs.sh 钉住的路由记录在这里；卸载时一起清掉，
+# 否则网线拔掉之后这些 host 路由还会把流量往已经不存在的网口上送。
+STATE_DIR="${HOME}/Library/Caches/cardinal-nfs"
+PINNED_ROUTES="${STATE_DIR}/pinned_routes"
+
 # 可选参数：只处理某一条链路
 ONLY_LINK="${1:-}"
 
@@ -112,6 +117,24 @@ if [ -z "${ONLY_LINK}" ]; then
         echo
     fi
 fi
+
+# 清掉 mount_nfs.sh 为网线链路钉住的路由。
+release_pinned_routes() {
+    [ -s "${PINNED_ROUTES}" ] || return 0
+    echo "== 清理网线钉住的路由 =="
+    while read -r host iface; do
+        [ -n "${host}" ] || continue
+        if sudo route -n delete -host "${host}" 2>/dev/null; then
+            echo "  已删除 ${host} -> ${iface} 的路由"
+        else
+            echo "  跳过 ${host}（没有对应路由）"
+        fi
+    done <"${PINNED_ROUTES}"
+    rm -f "${PINNED_ROUTES}"
+    echo
+}
+
+release_pinned_routes
 
 echo "卸载完成，当前 NFS 挂载情况："
 mount | grep -E " on (${MOUNT_ROOT}/(wireless|line)/nfs_|${MOUNT_ROOT}/nfs_)" || echo "（无 NFS 挂载）"
